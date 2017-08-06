@@ -1,11 +1,5 @@
 FROM nginx
 
-#RUN apt-get update \
-#    && apt-get install -y software-properties-common \
-#    && add-apt-repository -y ppa:certbot/certbot \
-#    && apt-get update \
-#    && apt-get install -y python-certbot-nginx 
-
 RUN apt-get update && apt-get install -y certbot
 
 COPY nginx.conf /etc/nginx/nginx.conf
