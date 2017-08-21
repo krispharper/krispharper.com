@@ -18,6 +18,7 @@ ExecStart=/usr/bin/docker run \
       --link mysql:mysql \
       -e WORDPRESS_DB_USER=${WORDPRESS_DB_USER} \
       -e WORDPRESS_DB_PASSWORD=${WORDPRESS_DB_PASSWORD} \
+      -v /var/www/html:/var/www/html \
       wordpress:4.7.3-php5.6-apache
 ExecStop=/usr/bin/docker stop wordpress
 
