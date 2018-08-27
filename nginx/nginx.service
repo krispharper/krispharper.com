@@ -8,7 +8,7 @@ Requires=docker.service
 [Service]
 Restart=always
 RestartSec=3s
-ExecStartPre=-/usr/bin/docker pull krispharper/nginx
+ExecStartPre=-/usr/bin/docker pull krispharper/nginx:krispharper.com
 ExecStartPre=-/usr/bin/docker kill nginx
 ExecStartPre=-/usr/bin/docker rm nginx
 ExecStart=/usr/bin/docker run \
@@ -18,5 +18,5 @@ ExecStart=/usr/bin/docker run \
       -v /etc/letsencrypt:/etc/letsencrypt \
       --name nginx \
       --link wordpress:wordpress \
-      krispharper/nginx
+      krispharper/nginx:krispharper.com
 ExecStop=/usr/bin/docker stop nginx
