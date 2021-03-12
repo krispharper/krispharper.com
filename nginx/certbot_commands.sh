@@ -19,4 +19,5 @@ docker exec -it nginx \
     -d radarr.krispharper.com \
     -d crashplan.krispharper.com \
     -d musicscholarshipatadistance.com \
+    -d swiftconference2021.com \
 && sudo systemctl nginx restart
