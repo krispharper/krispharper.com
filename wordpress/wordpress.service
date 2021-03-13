@@ -11,12 +11,12 @@ RestartSec=3s
 EnvironmentFile=/etc/environment
 ExecStartPre=-/usr/bin/docker kill wordpress
 ExecStartPre=-/usr/bin/docker rm wordpress
-ExecStartPre=-/usr/bin/docker pull wordpress:5-php7.1-apache
+ExecStartPre=-/usr/bin/docker pull wordpress:5-php7.4-apache
 ExecStart=/usr/bin/docker run \
       --rm \
       --name wordpress \
       --link mysql:mysql \
       -v /var/www/html:/var/www/html \
-      wordpress:5-php7.1-apache
+      wordpress:5-php7.4-apache
 ExecStop=/usr/bin/docker stop wordpress
 
