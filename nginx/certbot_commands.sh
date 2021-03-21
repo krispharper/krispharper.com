@@ -13,6 +13,7 @@ docker exec -it nginx \
     -d paulaclareharper.krispharper.com \
     -d paulaclareharper.com \
     -d www.paulaclareharper.com \
+    -d moviematch.krispharper.com \
     -d tautulli.krispharper.com \
     -d sonarr.krispharper.com \
     -d jackett.krispharper.com \
