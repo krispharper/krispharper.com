@@ -1,11 +1,9 @@
 FROM nginx:latest
 
 RUN apt-get update \
-    && apt-get install -y wget \
-    && wget https://dl.eff.org/certbot-auto \
-    && mv certbot-auto /usr/local/bin/certbot-auto \
-    && chown root /usr/local/bin/certbot-auto \
-    && chmod 0755 /usr/local/bin/certbot-auto \
-    && yes | certbot-auto --version
+    && apt-get install -y wget python3 python3-pip libaugeas0 \
+    && pip install --upgrade pip \
+    && pip install install certbot certbot-nginx \
+    && ln -s /opt/certbot/bin/certbot /usr/bin/certbot
 
 COPY nginx.conf /etc/nginx/nginx.conf
