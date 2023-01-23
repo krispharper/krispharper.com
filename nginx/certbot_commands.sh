@@ -22,4 +22,5 @@ docker exec nginx mkdir -p /etc/nginx/html \
     -d www.paulaclareharper.com \
     -d musicscholarshipatadistance.krispharper.com \
     -d swiftconference2021.com \
+    -d musicandtheinternet.co \
 && sudo systemctl restart nginx
