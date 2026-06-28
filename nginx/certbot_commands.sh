@@ -15,6 +15,7 @@ docker exec nginx mkdir -p /etc/nginx/html \
     -d sonarr.krispharper.com \
     -d jackett.krispharper.com \
     -d radarr.krispharper.com \
+    -d overseerr.krispharper.com \
     -d crashplan.krispharper.com \
     -d pi-hole.krispharper.com \
     -d paulaclareharper.krispharper.com \
