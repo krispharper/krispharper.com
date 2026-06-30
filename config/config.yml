@@ -1,0 +1,81 @@
+# Full ingress map, ports taken from the original Lightsail nginx.conf.
+# Fill the tunnel UUID. credentials-file must match the running container's
+# mount (/home/nonroot/.cloudflared in docker-compose.yml).
+#
+# TWO KINDS OF TARGET below:
+#  - Services migrated INTO this compose stack -> reach by container name.
+#  - Things staying on the Synology host (DSM, possibly Plex) -> reach the host.
+#    Host/LAN targets use explicit LAN IPs (cloudflared can reach the LAN
+#    directly): home server 192.168.1.102, NAS 192.168.1.101.
+
+tunnel: fd3ffcf5-3523-45f9-95a3-49fde4c20599
+credentials-file: /home/nonroot/.cloudflared/fd3ffcf5-3523-45f9-95a3-49fde4c20599.json
+
+ingress:
+  # ----------------- WordPress multisite (confirmed real sites) -----------------
+  - hostname: krispharper.com
+    service: http://wordpress:80
+  - hostname: www.krispharper.com
+    service: http://wordpress:80
+  - hostname: paulaclareharper.com
+    service: http://wordpress:80
+  - hostname: www.paulaclareharper.com
+    service: http://wordpress:80
+  - hostname: musicandtheinternet.co
+    service: http://wordpress:80
+  - hostname: www.musicandtheinternet.co
+    service: http://wordpress:80
+  - hostname: swiftconference2021.com
+    service: http://wordpress:80
+  - hostname: www.swiftconference2021.com
+    service: http://wordpress:80
+  # krispharper.us / viralmusicking.com / sonicmemes.com = edge redirects, not here.
+
+  # ----------------- Synology / host-level services -----------------
+  # nas = the actual Synology DSM admin, the ONE service still on the NAS box
+  # (not the home server). Point at the NAS's LAN IP.
+  # SECURITY: this exposes your NAS control panel to the public internet. Put
+  # Cloudflare Access (auth) in front of it, at minimum.
+  - hostname: nas.krispharper.com
+    service: http://192.168.1.101:5000
+
+  # ----------------- Media services -----------------
+  # Plex runs as a bridged compose service (ports published for LAN/discovery), so the tunnel reaches it by name.
+  - hostname: plex.krispharper.com
+    service: http://plex:32400
+  - hostname: overseerr.krispharper.com
+    service: http://overseerr:5055
+  - hostname: tautulli.krispharper.com
+    service: http://tautulli:8181
+
+  # ----------------- *arr apps -----------------
+  # sonarr / radarr / transmission share the VPN container's network namespace
+  # (network_mode: service:vpn) -> reach them THROUGH the vpn container.
+  # jackett + agregarr have ALSO been moved behind the VPN (service:vpn),
+  # so both are reached via the vpn container (vpn:9117, vpn:7171).
+  # cloudflared must be on the same user-defined Docker network as `vpn` and
+  # `jackett`. (On the old default bridge, name resolution didn't work; the
+  # consolidated compose puts everything on `internal`, which fixes that.)
+  # The vpn image must allow inbound from the Docker subnet (standard for
+  # openvpn-client images, sometimes a LAN/subnet env var) so these are reachable.
+  # URL BASE: each app's base path is currently /sonarr, /radarr, etc. Reset each
+  # to "/" in the app's settings, or it won't serve at the hostname root.
+  - hostname: sonarr.krispharper.com
+    service: http://vpn:8989
+  - hostname: radarr.krispharper.com
+    service: http://vpn:7878
+  - hostname: transmission.krispharper.com
+    service: http://vpn:9091
+  - hostname: jackett.krispharper.com
+    service: http://vpn:9117
+  - hostname: agregarr.krispharper.com
+    service: http://vpn:7171
+
+  # ----------------- Other admin UIs -----------------
+  - hostname: crashplan.krispharper.com
+    service: http://crashplan:5800
+  - hostname: pi-hole.krispharper.com
+    service: http://pihole:80
+
+  # Required catch-all. Must be last.
+  - service: http_status:404

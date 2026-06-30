@@ -1,0 +1,216 @@
+# Consolidated home stack: WordPress + MySQL + Cloudflare Tunnel + all home
+# services, built from the systemd units in github.com/krispharper/Services.
+#
+# Values (volumes, UID/GID, ports, VPN string) are taken verbatim from those
+# units. UID/GID and config paths intentionally differ per service — preserved
+# as-is, not normalized. Secrets are pulled from .env (see .env.example).
+#
+# Assumes the host bind-mount roots exist on the home server as they do today:
+#   /media/Poseidon/...   (media + several configs)
+#   /data/...             (configs for sonarr/radarr/overseerr/plex)
+
+services:
+  # ======================= WordPress + MySQL + tunnel =======================
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - /data/mysql:/var/lib/mysql
+    networks: [internal]
+
+  wordpress:
+    image: wordpress:5-php7.4-apache
+    restart: unless-stopped
+    depends_on: [db]
+    volumes:
+      - /var/www/html:/var/www/html
+      - ./config/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
+    networks: [internal]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --config /home/nonroot/.cloudflared/config.yml run
+    volumes:
+      - ./cloudflared:/home/nonroot/.cloudflared:ro
+    depends_on: [wordpress]
+    networks: [internal]
+
+  # ============================== VPN + clients ==============================
+  # The VPN owns the netns; clients join it with network_mode: service:vpn and
+  # therefore cannot declare their own ports/networks. cloudflared reaches their
+  # UIs at vpn:<port> over the internal network.
+  vpn:
+    image: krispharper/openvpn-client
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    devices:
+      - /dev/net/tun
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    environment:
+      - VPN_USERNAME=${VPN_USERNAME}
+      - VPN_PASSWORD=${VPN_PASSWORD}
+    command: ["-v", "nl-amsterdam.privacy.network;${VPN_USERNAME};${VPN_PASSWORD};1198"]
+    networks: [internal]
+
+  transmission:
+    image: krispharper/transmission
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    depends_on: [vpn]
+    environment:
+      - USERID=1026
+      - GROUPID=100
+    volumes:
+      - /media/Poseidon/Data/transmission:/transmission/info
+      - /media/Poseidon/Downloads/Transmission:/transmission/downloads
+      - /media/Poseidon/Downloads/Incomplete:/transmission/incomplete
+
+  sonarr:
+    image: linuxserver/sonarr
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    depends_on: [vpn]
+    environment:
+      - PUID=1026
+      - PGID=100
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /data/sonarr:/config
+      - "/media/Poseidon/Downloads/Temporary Media/TV Shows:/tv"
+      - /media/Poseidon/Downloads/Incomplete:/downloads
+
+  radarr:
+    image: linuxserver/radarr
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    depends_on: [vpn]
+    environment:
+      - PUID=1026
+      - PGID=100
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /data/radarr:/config
+      - /media/Poseidon/Movies:/movies
+      - /media/Poseidon/Downloads/Incomplete:/downloads
+
+  jackett:
+    image: linuxserver/jackett
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    depends_on: [vpn]
+    environment:
+      - PUID=1026
+      - PGID=100
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /media/Poseidon/Data/jackett:/config
+      - /media/Poseidon/Data/transmission/torrents:/downloads
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    depends_on: [vpn]
+    environment:
+      - LOG_LEVEL=info
+
+  agregarr:
+    image: agregarr/agregarr
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    depends_on: [vpn]
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /data/agregarr:/app/config
+      - /media/Poseidon:/media
+
+  # ============================ Standalone media ============================
+  overseerr:
+    image: linuxserver/overseerr
+    restart: unless-stopped
+    environment:
+      - PUID=1026
+      - PGID=100
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /data/overseerr:/config
+    networks: [internal]
+
+  plex:
+    image: plexinc/pms-docker
+    restart: unless-stopped
+    hostname: plex-server
+    dns:
+      - 8.8.8.8
+    environment:
+      - TZ=America/Chicago
+      - PLEX_CLAIM=${PLEX_CLAIM}
+      - ADVERTISE_IP=http://192.168.1.102:32400/
+      - PLEX_UID=1026
+      - PLEX_GID=1000
+    ports:
+      - "32400:32400/tcp"
+      - "1900:1900/udp"
+      - "32410:32410/udp"
+      - "32412:32412/udp"
+      - "32413:32413/udp"
+      - "32414:32414/udp"
+      - "32469:32469/tcp"
+    volumes:
+      - /data/plex:/config
+      - /media/Poseidon:/media
+    networks: [internal]
+
+  tautulli:
+    image: tautulli/tautulli
+    restart: unless-stopped
+    environment:
+      - TZ=America/Chicago
+      - PUID=1026
+      - PGID=1000
+    volumes:
+      - /media/Poseidon/Data/tautulli:/config
+      - "/data/plex/Library/Application Support/Plex Media Server/Logs:/logs:ro"
+    networks: [internal]
+
+  crashplan:
+    image: jlesage/crashplan-pro:latest
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "4g"
+    environment:
+      - USER_ID=1026
+      - TZ=America/Chicago
+      - CRASHPLAN_SRV_MAX_MEM=10000m
+    volumes:
+      - /media/Poseidon:/storage:ro
+      - /media/Poseidon/Data/crashplan:/config
+    networks: [internal]
+
+  pihole:
+    image: pihole/pihole:latest
+    restart: unless-stopped
+    hostname: pihole
+    environment:
+      - TZ=America/Chicago
+      - WEBPASSWORD=${PI_HOLE_PASSWORD}
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+    volumes:
+      - /media/Poseidon/Data/pihole/etc-pihole:/etc/pihole
+      - /media/Poseidon/Data/pihole/etc-dnsmasq.d:/etc/dnsmasq.d
+    networks: [internal]
+
+networks:
+  internal:
+    driver: bridge
