@@ -38,7 +38,37 @@ services:
     command: tunnel --config /home/nonroot/.cloudflared/config.yml run
     volumes:
       - ./cloudflared:/home/nonroot/.cloudflared:ro
-    depends_on: [wordpress]
+    depends_on: [wordpress, kadm]
+    networks: [internal]
+
+  # ============================ kadm =============================
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kadm
+      POSTGRES_PASSWORD: ${KADM_DB_PASSWORD}
+      POSTGRES_DB: kadm
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kadm -d kadm"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    networks: [internal]
+
+  kadm:
+    image: krispharper/kadm:latest
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      KADM_DATABASE_URL: postgresql+psycopg://kadm:${KADM_DB_PASSWORD}@postgres:5432/kadm
+      KADM_CF_ACCESS_TEAM_DOMAIN: ${KADM_CF_ACCESS_TEAM_DOMAIN}
+      KADM_CF_ACCESS_AUD: ${KADM_CF_ACCESS_AUD}
     networks: [internal]
 
   # ============================== VPN + clients ==============================

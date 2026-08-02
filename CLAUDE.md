@@ -36,13 +36,41 @@ separate box (only its DSM UI is exposed, as `nas.krispharper.com`).
   `WORDPRESS_*` env vars are inert. Multisite constants, `DB_HOST = 'db'`, and
   the `X-Forwarded-Proto` HTTPS-trust block all live in that file. Do not pin
   `WP_HOME`/`WP_SITEURL` (it collapses multisite onto one domain).
+* **Two databases, named for their engines.** `db` is WordPress's MySQL and
+  `postgres` is kadm's. Do not rename either to something role-shaped: the
+  kadm container's `KADM_DATABASE_URL` resolves the host `postgres` by service
+  name, and WordPress's `wp-config.php` hard-codes `DB_HOST = 'db'`.
+* **`kadm` must never publish a port and must always have a Cloudflare Access
+  application.** It holds every account balance, transaction and tax return, and
+  has no login page of its own -- Access is the whole of its authentication. The
+  app fails closed (it refuses requests without a verified Access JWT, and
+  refuses outright when `KADM_CF_ACCESS_AUD` is unset), so a missing Access app
+  locks you out rather than exposing the data. A published port would be the one
+  way to reach it unauthenticated.
 * **Host mounts.** `/media/Poseidon` (media + several configs) and `/data`
   (configs for sonarr/radarr/overseerr/plex/agregarr) must be mounted on the
   host before the stack starts.
 
 ## Tunnel ingress targets
 
-Defined in `cloudflared/config.yml`. Source of truth for what hostname maps to
+**The tunnel is remotely managed: the ingress map lives in the Cloudflare
+dashboard, not in this repo.** cloudflared pulls it down at startup and logs
+`Updated to new configuration ... version=N`. The local `cloudflared/config.yml`
+is read for the tunnel identity and credentials, and its `ingress:` block is
+ignored -- so editing it changes nothing, and an unrouted hostname falls through
+to the remote config's `http_status:404` catch-all, which presents as the target
+service being broken.
+
+Proof, if it is ever in doubt: the running config carries an
+`originRequest.httpHostHeader` on `jackett` and a second `crashplan` entry
+pointing at `https://crashplan.krispharper.com:443`. Neither appears in
+`config/config.yml`, which has drifted and is kept only as a readable record of
+intent.
+
+Add or change a hostname under **Networks > Tunnels > (tunnel) > Configure >
+Public Hostname**. `docker compose run --rm cloudflared ... ingress rule <url>`
+validates the *local file* only and will happily confirm a rule the daemon has
+never seen. Source of truth for what hostname maps to
 what:
 
 * WordPress domains -> `http://wordpress:80`
@@ -53,6 +81,7 @@ what:
   `transmission` -> `http://vpn:9091`, `jackett` -> `http://vpn:9117`,
   `agregarr` -> `http://vpn:7171` (via the VPN namespace)
 * `crashplan` -> `http://crashplan:5800`, `pi-hole` -> `http://pihole:80`
+* `kadm` -> `http://kadm:8000` (bridged compose service)
 
 `cloudflared` runs with an explicit `--config /home/nonroot/.cloudflared/config.yml`
 because auto-discovery is unreliable in the distroless image.

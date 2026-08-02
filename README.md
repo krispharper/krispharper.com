@@ -22,6 +22,9 @@ internet -> Cloudflare edge -> (outbound tunnel) -> cloudflared -> services
 **Web**
 
 * `wordpress` + `db` — WordPress multisite + MySQL.
+* `kadm` + `postgres` — personal finance app + its database. The Postgres
+  service is called `postgres` rather than `db`, which WordPress's MySQL already
+  holds; with two databases on one stack each is named for its engine.
 * `cloudflared` — the Cloudflare Tunnel daemon (locally-managed).
 
 **VPN group** — `vpn` (Private Internet Access, `nl-amsterdam`) plus the
@@ -49,7 +52,7 @@ WordPress multisite serves several sites, including `krispharper.com`.
 
 Service subdomains under `krispharper.com`: `nas`, `plex`, `overseerr`,
 `tautulli`, `sonarr`, `radarr`, `transmission`, `jackett`, `agregarr`,
-`crashplan`, `pi-hole`.
+`crashplan`, `pi-hole`, `kadm`.
 
 ## Setup
 
@@ -64,10 +67,34 @@ docker run --rm -v "$PWD/cloudflared:/home/nonroot/.cloudflared" \
   cloudflare/cloudflared:latest tunnel create krispharper.com
 ```
 
-Then `cp cloudflared/config.yml.example cloudflared/config.yml` and paste the
-tunnel UUID into the `tunnel:` and `credentials-file:` lines.
+Then `cp config/config.yml cloudflared/config.yml` and paste the tunnel UUID into
+the `tunnel:` and `credentials-file:` lines.
 
-**2. Configure secrets:** `cp .env.example .env` and fill it in.
+**The `ingress:` block in that file is not what routes traffic.** This tunnel is
+remotely managed: the real ingress map lives in the Cloudflare dashboard and
+cloudflared fetches it at startup, logging `Updated to new configuration`. The
+local file supplies the tunnel identity and credentials only. `config/config.yml`
+is kept as a readable record of intent and has drifted from what is actually
+served, so trust the dashboard, or the log line above.
+
+**2. Configure secrets:** `cp .env.example .env` and fill it in. As well as the
+MySQL, VPN, Plex and Pi-hole values, the finance app needs:
+
+```
+KADM_DB_PASSWORD=              # Postgres password for the kadm role
+KADM_CF_ACCESS_TEAM_DOMAIN=    # e.g. yourteam.cloudflareaccess.com
+KADM_CF_ACCESS_AUD=            # Access application AUD tag for kadm.krispharper.com
+```
+
+In the current dashboard: the **team domain** is under Zero Trust > Settings
+("Team name and domain"), and the **AUD tag** under Zero Trust > Access controls
+> Applications > Configure > Additional settings ("Application Audience (AUD)
+Tag").
+
+The AUD is per application, so it must come from the app whose domain is
+`kadm.krispharper.com` — an AUD belonging to a different app rejects every
+request. Leaving it blank does not open the app up; it makes it refuse
+everything.
 
 **3. Ensure host mounts exist:** `/media/Poseidon` and `/data` must be mounted
 on the host before the stack starts (if `/media/Poseidon` is a network mount,
@@ -82,8 +109,27 @@ docker compose logs -f cloudflared    # expect "Registered tunnel connection"
 
 ## Operations
 
+* Deploying `kadm`: `make publish` in the kadm repo, then here
+  `docker compose pull kadm && docker compose up -d kadm`. After a deploy that
+  changes the schema, `docker compose run --rm kadm alembic upgrade head`.
+  Images are tagged with the commit as well as `latest`, so
+  `image: krispharper/kadm:<sha>` pins or rolls back.
+* Adding a hostname: **in the Cloudflare dashboard**, under Networks > Tunnels >
+  (tunnel) > Configure > Public Hostname. The tunnel is remotely managed, so the
+  `ingress:` block in `cloudflared/config.yml` is ignored -- editing it does
+  nothing and the hostname stays on the catch-all `http_status:404`, which looks
+  like the target service failing rather than a missing route. Confirm with
+  `docker compose logs cloudflared | grep 'Updated to new configuration'`, which
+  prints the ingress actually in force. The hostname also needs a proxied CNAME to
+  `fd3ffcf5-3523-45f9-95a3-49fde4c20599.cfargotunnel.com`.
+* The image is built for `linux/amd64`. It is produced on an Apple Silicon
+  laptop, whose native output would be arm64 and would die here on every start
+  with `exec format error` -- the kernel refusing a foreign binary, which looks
+  like an application fault and is not one. `make publish` pins the platform and
+  the service declares it, so a mismatch fails at pull instead.
 * Backups: `scripts/backup.sh` dumps the WordPress DB + webroot (schedule via
-  cron). Service configs under `/data` and `/media/Poseidon/Data` and media
+  cron). **It does not cover the kadm Postgres volume** — `/data/postgres` is a
+  separate job (`pg_dump`), and it holds fifteen years of financial history. Service configs under `/data` and `/media/Poseidon/Data` and media
   under `/media/Poseidon` are covered separately by CrashPlan.
 * Logs: `docker compose logs -f <service>`.
 * Reach a VPN-group service for debugging (from a sibling in the namespace):
@@ -92,7 +138,9 @@ docker compose logs -f cloudflared    # expect "Registered tunnel connection"
 ## Files
 
 * `docker-compose.yml` — the full stack (16 services).
-* `cloudflared/config.yml.example` — tunnel identity + per-hostname ingress map.
+* `config/config.yml` — tunnel identity, plus an ingress map that is **not** in
+  force: routing is configured in the Cloudflare dashboard. Copy to
+  `cloudflared/config.yml`, which supplies the daemon's identity and credentials.
 * `config/uploads.ini` — PHP upload limits.
 * `scripts/backup.sh` — WordPress DB + webroot backup.
 * `CLAUDE.md` — architecture invariants, gotchas, and conventions for AI assistants.
