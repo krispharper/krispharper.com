@@ -22,7 +22,10 @@ internet -> Cloudflare edge -> (outbound tunnel) -> cloudflared -> services
 **Web**
 
 * `wordpress` + `db` — WordPress multisite + MySQL.
-* `kadm` + `postgres` — personal finance app + its database. The Postgres
+* `kadm` + `postgres` — a collection of personal apps + their database. It
+  started as finance tracking (accounts, balances, net worth, income, taxes,
+  transactions) and now also covers crossword solve times, with more to come;
+  each app owns a Postgres schema inside the one `kadm` database. The Postgres
   service is called `postgres` rather than `db`, which WordPress's MySQL already
   holds; with two databases on one stack each is named for its engine.
 * `cloudflared` — the Cloudflare Tunnel daemon (locally-managed).
@@ -78,7 +81,7 @@ is kept as a readable record of intent and has drifted from what is actually
 served, so trust the dashboard, or the log line above.
 
 **2. Configure secrets:** `cp .env.example .env` and fill it in. As well as the
-MySQL, VPN, Plex and Pi-hole values, the finance app needs:
+MySQL, VPN, Plex and Pi-hole values, `kadm` needs:
 
 ```
 KADM_DB_PASSWORD=              # Postgres password for the kadm role
@@ -127,13 +130,72 @@ docker compose logs -f cloudflared    # expect "Registered tunnel connection"
   with `exec format error` -- the kernel refusing a foreign binary, which looks
   like an application fault and is not one. `make publish` pins the platform and
   the service declares it, so a mismatch fails at pull instead.
-* Backups: `scripts/backup.sh` dumps the WordPress DB + webroot (schedule via
-  cron). **It does not cover the kadm Postgres volume** — `/data/postgres` is a
-  separate job (`pg_dump`), and it holds fifteen years of financial history. Service configs under `/data` and `/media/Poseidon/Data` and media
-  under `/media/Poseidon` are covered separately by CrashPlan.
+* Backups: `scripts/backup.sh`, nightly by cron. See [Backups](#backups).
 * Logs: `docker compose logs -f <service>`.
 * Reach a VPN-group service for debugging (from a sibling in the namespace):
   `docker compose exec sonarr wget -qO- http://localhost:9117/`.
+
+## Backups
+
+`scripts/backup.sh` covers three things, and runs from `kris`'s crontab at 08:00
+UTC (03:00 America/Chicago—the host clock is UTC):
+
+| Component | What | Kept |
+|---|---|---|
+| `mysql` | WordPress's database, `mysqldump --single-transaction` | 30 days |
+| `postgres` | kadm's database, `pg_dump -Fc` | 30 days |
+| `webroot` | `/var/www/html`, including `wp-config.php` and `.htaccess` | 14 days |
+
+Both databases are dumped **through their running containers**, so the data
+directories under `/data` are never read while an engine has them open. A
+file-level copy of a live database is not a backup, it is a copy of whatever
+happened to be on disk mid-write.
+
+```bash
+scripts/backup.sh            # a full run, ~75s (the webroot tar is most of it)
+scripts/backup.sh --status   # newest backup per component; non-zero if any is stale
+tail -20 backup.log          # what cron has been doing
+```
+
+**Backups are written to the NAS, at `/media/Poseidon/Data/backups`, and that
+location is load-bearing.** A backup on the same disk as its source is one disk
+failure away from being no backup—and the NAS copy is the only thing that puts
+these into CrashPlan's set. CrashPlan mounts `/media/Poseidon` read-only **and
+nothing else**: `/data` and `/var/www/html` are in no backup other than this one.
+
+The script refuses to run if the NAS is not mounted, rather than writing to the
+local directory underneath the mountpoint. With the share unmounted,
+`/media/Poseidon/Data` is an ordinary local directory, so an unguarded run would
+quietly put every backup on the same disk as the databases and report success.
+
+### Restoring
+
+Both of these have been tested end to end against a scratch database—row counts
+and a balance total matched the live database to the cent. Restore into a scratch
+copy first and compare; never straight over a live database.
+
+```bash
+# Postgres (kadm). pg_restore cannot read a custom-format archive from a pipe,
+# so the file has to go into the container.
+CID=$(docker compose ps -q postgres)
+docker cp /media/Poseidon/Data/backups/postgres/kadm-<stamp>.dump "$CID:/tmp/r.dump"
+docker exec "$CID" createdb -U kadm kadm_restore_test
+docker exec "$CID" pg_restore -U kadm -d kadm_restore_test /tmp/r.dump
+docker exec "$CID" psql -U kadm -d kadm_restore_test -c 'select count(*) from finances.transaction'
+# happy? then: dropdb kadm, createdb kadm, pg_restore into it, and restart kadm.
+
+# MySQL (WordPress).
+set -a; source .env; set +a
+docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" db \
+    mysql -u root -e 'create database wp_restore_test'
+gunzip -c /media/Poseidon/Data/backups/mysql/mysql-<stamp>.sql.gz |
+    docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" db \
+    mysql -u root wp_restore_test
+```
+
+The Postgres restore relies on compose creating the `kadm` role from
+`KADM_DB_PASSWORD`, since the dump carries one database and not the cluster's
+globals. A restore into a fresh volume therefore needs `.env` to be right first.
 
 ## Files
 
@@ -142,6 +204,6 @@ docker compose logs -f cloudflared    # expect "Registered tunnel connection"
   force: routing is configured in the Cloudflare dashboard. Copy to
   `cloudflared/config.yml`, which supplies the daemon's identity and credentials.
 * `config/uploads.ini` — PHP upload limits.
-* `scripts/backup.sh` — WordPress DB + webroot backup.
+* `scripts/backup.sh` — nightly backup of both databases and the webroot.
 * `CLAUDE.md` — architecture invariants, gotchas, and conventions for AI assistants.
 * `.gitignore` — keeps secrets, credentials, backups, and the webroot out of git.

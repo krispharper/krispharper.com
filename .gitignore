@@ -2,5 +2,8 @@
 .env
 cloudflared
 
-# Local backups
+# Local backups (backups now go to the NAS; kept in case anything writes here)
 backups/
+
+# Backup script output
+backup.log

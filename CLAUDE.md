@@ -41,8 +41,10 @@ separate box (only its DSM UI is exposed, as `nas.krispharper.com`).
   kadm container's `KADM_DATABASE_URL` resolves the host `postgres` by service
   name, and WordPress's `wp-config.php` hard-codes `DB_HOST = 'db'`.
 * **`kadm` must never publish a port and must always have a Cloudflare Access
-  application.** It holds every account balance, transaction and tax return, and
-  has no login page of its own -- Access is the whole of its authentication. The
+  application.** It is a collection of personal apps -- finances, crosswords, and
+  more over time -- sharing one Postgres database with a schema per app. It holds
+  every account balance, transaction and tax return, and has no login page of its
+  own -- Access is the whole of its authentication. The
   app fails closed (it refuses requests without a verified Access JWT, and
   refuses outright when `KADM_CF_ACCESS_AUD` is unset), so a missing Access app
   locks you out rather than exposing the data. A published port would be the one
@@ -50,6 +52,14 @@ separate box (only its DSM UI is exposed, as `nas.krispharper.com`).
 * **Host mounts.** `/media/Poseidon` (media + several configs) and `/data`
   (configs for sonarr/radarr/overseerr/plex/agregarr) must be mounted on the
   host before the stack starts.
+* **CrashPlan only sees `/media/Poseidon`.** That is its single read-only mount,
+  so it covers media and the service configs that live on the NAS -- and it does
+  **not** cover `/data` (both database data directories, plus sonarr/radarr/
+  overseerr/plex/agregarr configs) or `/var/www/html` (the webroot). Anything
+  outside `/media/Poseidon` is backed up only by `scripts/backup.sh`, which is
+  why that script writes to the NAS rather than to local disk: the destination is
+  what pulls the dumps into CrashPlan's set. Do not "tidy" the backup path onto
+  the local disk.
 
 ## Tunnel ingress targets
 
@@ -97,6 +107,35 @@ In `.env` (gitignored): `MYSQL_*`, `VPN_USERNAME`, `VPN_PASSWORD`, `PLEX_CLAIM`,
 `PI_HOLE_PASSWORD`. Also keep `jackett`'s `ServerConfig.json` (API key + admin
 hash, under `/media/Poseidon/Data`) out of version control.
 
+## Backups
+
+`scripts/backup.sh` dumps MySQL, Postgres and the webroot to
+`/media/Poseidon/Data/backups`, nightly from `kris`'s crontab at 08:00 UTC
+(03:00 Chicago; the host clock is UTC). Retention is 30 days for the databases
+and 14 for the webroot. `scripts/backup.sh --status` reports the newest backup of
+each component and exits non-zero if one is stale or missing.
+
+Things in it that look incidental and are not:
+
+* **It runs as `kris`, not root.** The NAS squashes root, so a root-owned write
+  there fails or lands as `nobody`. `sudo` is used only to *read* the webroot --
+  `sudo tar -czf -` with the shell doing the redirect, so tar never writes to the
+  NAS as root.
+* **Databases are dumped through their containers**, never copied from `/data`.
+  A file-level copy of a live database is a copy of a half-written one.
+* **It refuses to run when the NAS is unmounted.** `/media/Poseidon/Data` is a
+  plain local directory when the share is not mounted, so writing there would put
+  the backups on the same disk as the databases and still report success. The
+  check asks whether NFS is *among* the mounts on that path, because autofs holds
+  the mountpoint and the NFS mount is stacked on top -- `findmnt` returns both.
+* **`pg_restore` cannot read a `-Fc` archive from a pipe.** Fed one on stdin it
+  says "did not find magic string in file header", which reads as a corrupt dump
+  and is not one. The script verifies by copying the dump back into the container.
+* **The webroot is `/var/www/html`**, a host bind mount, not a directory inside
+  the checkout. An earlier version of this script tarred `${STACK_DIR}/wordpress`,
+  which does not exist, so every run would have failed at that step -- and since
+  the script had never been scheduled, nothing surfaced it.
+
 ## Gotchas learned the hard way
 
 * **Stale local DNS during changes.** Pi-hole is in the LAN resolution path and
@@ -127,7 +166,8 @@ hash, under `/media/Poseidon/Data`) out of version control.
 docker compose up -d                      # full stack
 docker compose up -d db wordpress cloudflared   # web path only
 docker compose logs -f <service>
-scripts/backup.sh                         # WordPress DB + webroot
+scripts/backup.sh                         # both databases + webroot -> NAS
+scripts/backup.sh --status                # is anything stale or missing?
 # debug a VPN-group service from a sibling in the namespace:
 docker compose exec sonarr wget -S --spider http://localhost:9117/ 2>&1 | head
 ```
