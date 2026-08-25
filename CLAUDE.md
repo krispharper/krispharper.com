@@ -104,7 +104,14 @@ because auto-discovery is unreliable in the distroless image.
 ## Secrets
 
 In `.env` (gitignored): `MYSQL_*`, `VPN_USERNAME`, `VPN_PASSWORD`, `PLEX_CLAIM`,
-`PI_HOLE_PASSWORD`. Also keep `jackett`'s `ServerConfig.json` (API key + admin
+`PI_HOLE_PASSWORD`, `KADM_*`.
+
+`KADM_SECRET_KEY` encrypts the New York Times session cookie kadm stores for the
+crossword app. It must stay out of the database: `/data/postgres` is dumped nightly
+to the NAS and picked up by CrashPlan, so a plaintext cookie in a table would put a
+live NYT login in offsite backups. Unset, kadm refuses to store the cookie rather
+than storing it unencrypted. Rotating it invalidates the stored cookie, which then
+has to be pasted again—not a failure, but not silent either. Also keep `jackett`'s `ServerConfig.json` (API key + admin
 hash, under `/media/Poseidon/Data`) out of version control.
 
 ## Backups

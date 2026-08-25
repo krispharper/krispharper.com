@@ -69,6 +69,7 @@ services:
       KADM_DATABASE_URL: postgresql+psycopg://kadm:${KADM_DB_PASSWORD}@postgres:5432/kadm
       KADM_CF_ACCESS_TEAM_DOMAIN: ${KADM_CF_ACCESS_TEAM_DOMAIN}
       KADM_CF_ACCESS_AUD: ${KADM_CF_ACCESS_AUD}
+      KADM_SECRET_KEY: ${KADM_SECRET_KEY:-}
     networks: [internal]
 
   # ============================== VPN + clients ==============================

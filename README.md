@@ -87,6 +87,7 @@ MySQL, VPN, Plex and Pi-hole values, `kadm` needs:
 KADM_DB_PASSWORD=              # Postgres password for the kadm role
 KADM_CF_ACCESS_TEAM_DOMAIN=    # e.g. yourteam.cloudflareaccess.com
 KADM_CF_ACCESS_AUD=            # Access application AUD tag for kadm.krispharper.com
+KADM_SECRET_KEY=               # encrypts the stored New York Times cookie
 ```
 
 In the current dashboard: the **team domain** is under Zero Trust > Settings
