@@ -49,6 +49,21 @@ separate box (only its DSM UI is exposed, as `nas.krispharper.com`).
   refuses outright when `KADM_CF_ACCESS_AUD` is unset), so a missing Access app
   locks you out rather than exposing the data. A published port would be the one
   way to reach it unauthenticated.
+* **`kadm` holds a read-write `/media/Poseidon` mount and runs as `1026:100`.**
+  Its media app renames movie directories, writes `poster.jpg` and deletes
+  rejected files, so unlike crashplan's read-only copy of the same share this
+  one has to be writable. The `user:` line is not cosmetic: the image has no
+  `USER` directive, the NAS squashes root, and a root-owned write there fails or
+  lands as `nobody` — the same trap `scripts/backup.sh` runs as `kris` to avoid.
+  1026:100 is what sonarr, radarr and transmission already write as, so renamed
+  files keep the ownership the rest of the stack expects. It also mounts
+  `/data/kadm-media` for contact sheets and subtitle strips, which sits outside
+  `/media/Poseidon` deliberately: those regenerate from the films, and CrashPlan
+  would otherwise store disposable images offsite forever. **kadm still stays on
+  `internal` and still publishes no port** — it reaches Radarr and Transmission
+  at `vpn:<port>` exactly as `cloudflared` does, and giving it
+  `network_mode: "service:vpn"` would take away both its Access route and its
+  Postgres connection.
 * **Host mounts.** `/media/Poseidon` (media + several configs) and `/data`
   (configs for sonarr/radarr/overseerr/plex/agregarr) must be mounted on the
   host before the stack starts.
@@ -105,6 +120,13 @@ because auto-discovery is unreliable in the distroless image.
 
 In `.env` (gitignored): `MYSQL_*`, `VPN_USERNAME`, `VPN_PASSWORD`, `PLEX_CLAIM`,
 `PI_HOLE_PASSWORD`, `KADM_*`.
+
+The media app adds `KADM_RADARR_API_KEY`, `KADM_TMDB_API_KEY`, and optionally
+`KADM_TRANSMISSION_USERNAME` / `KADM_TRANSMISSION_PASSWORD` and
+`KADM_OPENSUBTITLES_API_KEY`. The first two are not optional in practice: without
+the Radarr key the media app's endpoints answer 503 naming the missing setting,
+and without the TMDB key no artwork appears at all, because Apple's iTunes Search
+API stopped returning movie results and TMDB is now the only working source.
 
 `KADM_SECRET_KEY` encrypts the New York Times session cookie kadm stores for the
 crossword app. It must stay out of the database: `/data/postgres` is dumped nightly
