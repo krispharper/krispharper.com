@@ -103,17 +103,6 @@ services:
       # `docker compose run` and the test suite never poll the real Radarr. This
       # file is what turns it on.
       KADM_MEDIA_POLL_SECONDS: 900
-
-      # Where the machine you BROWSE from mounts the same share, so the review
-      # page can print a path that opens in VLC. Nothing here is mounted or read
-      # on the server -- it is display text for the client, which is why it lives
-      # in .env rather than being hard-coded in this file: it describes a
-      # particular Mac, not this host. Unset simply hides the "On the Mac" line.
-      #
-      # Radarr mounts the films at `/movies`, so that is the prefix kadm sees and
-      # the one the mapping has to cover:
-      #   KADM_MEDIA_MAC_PATHS={"/movies": "/Volumes/Movies"}
-      KADM_MEDIA_MAC_PATHS: ${KADM_MEDIA_MAC_PATHS:-}
     volumes:
       # Read-WRITE, unlike crashplan's read-only copy of the same share:
       # approving a movie renames its directory and writes a poster into it, and

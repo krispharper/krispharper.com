@@ -71,8 +71,7 @@ separate box (only its DSM UI is exposed, as `nas.krispharper.com`).
   directory" on a file that was plainly there, just under a name that container
   could not see. `- /media/Poseidon/Movies:/movies` matches Radarr's namespace,
   which is the convention the whole *arr stack follows for this reason. If you
-  ever change Radarr's movie mount, change kadm's to match, and extend
-  `KADM_MEDIA_MAC_PATHS` so the "open in VLC" path keeps resolving.
+  ever change Radarr's movie mount, change kadm's to match.
 * **Host mounts.** `/media/Poseidon` (media + several configs) and `/data`
   (configs for sonarr/radarr/overseerr/plex/agregarr) must be mounted on the
   host before the stack starts.
@@ -131,16 +130,10 @@ In `.env` (gitignored): `MYSQL_*`, `VPN_USERNAME`, `VPN_PASSWORD`, `PLEX_CLAIM`,
 `PI_HOLE_PASSWORD`, `KADM_*`.
 
 The media app adds `KADM_RADARR_API_KEY`, `KADM_TMDB_API_KEY`, and optionally
-`KADM_TRANSMISSION_USERNAME` / `KADM_TRANSMISSION_PASSWORD`,
-`KADM_OPENSUBTITLES_API_KEY` and `KADM_MEDIA_MAC_PATHS`.
+`KADM_TRANSMISSION_USERNAME` / `KADM_TRANSMISSION_PASSWORD` and
+`KADM_OPENSUBTITLES_API_KEY`.
 
-`KADM_MEDIA_MAC_PATHS` is display text for the client, not a server path — it
-maps the prefix kadm sees onto the prefix the machine you browse from uses, so
-the review page can print something you can paste into VLC. It belongs in `.env`
-because it describes a particular Mac rather than this host, and nothing on the
-server mounts or reads those paths. Radarr mounts the films at `/movies`, so
-that is the prefix to map: `KADM_MEDIA_MAC_PATHS={"/movies": "/Volumes/Movies"}`.
-Leaving it unset just hides the "On the Mac" line. The first two are not optional in practice: without
+The first two are not optional in practice: without
 the Radarr key the media app's endpoints answer 503 naming the missing setting,
 and without the TMDB key no artwork appears at all, because Apple's iTunes Search
 API stopped returning movie results and TMDB is now the only working source.
