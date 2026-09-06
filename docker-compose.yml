@@ -103,12 +103,28 @@ services:
       # `docker compose run` and the test suite never poll the real Radarr. This
       # file is what turns it on.
       KADM_MEDIA_POLL_SECONDS: 900
+
+      # Radarr mounts the films at `/movies`, so every path its API reports is
+      # `/movies/...` -- and kadm consumes those paths verbatim. Both prefixes
+      # are mapped to the Mac's mount so the review page's "open in VLC" path
+      # works whichever namespace a row was analysed under.
+      KADM_MEDIA_MAC_PATHS: '{"/movies": "/Volumes/Movies", "/media/Poseidon/Movies": "/Volumes/Movies"}'
     volumes:
       # Read-WRITE, unlike crashplan's read-only copy of the same share:
       # approving a movie renames its directory and writes a poster into it, and
       # rejecting one deletes it. This mount is what makes the media app
       # possible, and it is the reason for the `user:` line above.
       - /media/Poseidon:/media/Poseidon
+      # The SAME films, mounted a second time at the path Radarr uses.
+      #
+      # This is not redundancy, it is the fix for a real bug: radarr mounts
+      # `/media/Poseidon/Movies:/movies`, so `movieFile.path` comes back as
+      # `/movies/Some Film (1999)/Some Film.mkv`. kadm takes that path verbatim
+      # and opens it, so with only the mount above every single analysis failed
+      # with "No such file or directory" -- the file was right there, under a
+      # name this container could not see. Matching Radarr's namespace is the
+      # convention the whole *arr stack follows for exactly this reason.
+      - /media/Poseidon/Movies:/movies
       # Contact sheets and subtitle strips. Under /data rather than
       # /media/Poseidon on purpose: they regenerate from the films in about two
       # minutes each, and CrashPlan backs up only /media/Poseidon -- putting

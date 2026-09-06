@@ -64,6 +64,15 @@ separate box (only its DSM UI is exposed, as `nas.krispharper.com`).
   at `vpn:<port>` exactly as `cloudflared` does, and giving it
   `network_mode: "service:vpn"` would take away both its Access route and its
   Postgres connection.
+* **`kadm` mounts the films twice, and the second mount is load-bearing.**
+  `radarr` mounts them as `/media/Poseidon/Movies:/movies`, so every path its
+  API reports is `/movies/...` — and kadm opens those paths verbatim. With only
+  the `/media/Poseidon` mount, every analysis failed with "No such file or
+  directory" on a file that was plainly there, just under a name that container
+  could not see. `- /media/Poseidon/Movies:/movies` matches Radarr's namespace,
+  which is the convention the whole *arr stack follows for this reason. If you
+  ever change Radarr's movie mount, change kadm's to match, and extend
+  `KADM_MEDIA_MAC_PATHS` so the "open in VLC" path keeps resolving.
 * **Host mounts.** `/media/Poseidon` (media + several configs) and `/data`
   (configs for sonarr/radarr/overseerr/plex/agregarr) must be mounted on the
   host before the stack starts.
