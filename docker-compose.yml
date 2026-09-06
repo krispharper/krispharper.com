@@ -65,14 +65,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # The media app renames directories, writes poster.jpg and deletes files on
-    # /media/Poseidon. The image carries no USER directive, so without this it
-    # would do all of that as root -- and the NAS squashes root, so those writes
-    # fail or land as `nobody`, which is the same trap scripts/backup.sh runs as
-    # `kris` to avoid. 1026:100 is what sonarr, radarr and transmission already
-    # write as, so files this container renames keep the ownership the rest of
-    # the stack expects. The other kadm apps write nothing to disk, so this
-    # costs them nothing.
+    # The media app writes to /media/Poseidon and the NAS squashes root.
+    # 1026:100 is what sonarr, radarr and transmission already write as.
     user: "1026:100"
     environment:
       KADM_DATABASE_URL: postgresql+psycopg://kadm:${KADM_DB_PASSWORD}@postgres:5432/kadm
@@ -81,48 +75,28 @@ services:
       KADM_SECRET_KEY: ${KADM_SECRET_KEY:-}
 
       # --- media ---------------------------------------------------------
-      # Radarr and Transmission live in the VPN container's namespace, so they
-      # are reached at `vpn:<port>` from the internal bridge -- exactly as
-      # cloudflared reaches them. kadm itself stays on `internal` and must NOT
-      # be given network_mode: "service:vpn": that would take away both its
-      # Cloudflare Access route and its Postgres connection.
+      # Radarr and Transmission sit in the VPN netns. kadm stays on `internal`
+      # and must not join it, or it loses Cloudflare Access and Postgres.
       KADM_RADARR_URL: http://vpn:7878
       KADM_RADARR_API_KEY: ${KADM_RADARR_API_KEY}
       KADM_TRANSMISSION_URL: http://vpn:9091
       KADM_TRANSMISSION_USERNAME: ${KADM_TRANSMISSION_USERNAME:-}
       KADM_TRANSMISSION_PASSWORD: ${KADM_TRANSMISSION_PASSWORD:-}
 
-      # Required for artwork rather than optional: Apple's iTunes Search API
-      # stopped returning movie results, so TMDB is the only working poster
-      # source until the Apple path is pointed at a live endpoint again.
+      # Not optional: TMDB is the only working poster source.
       KADM_TMDB_API_KEY: ${KADM_TMDB_API_KEY}
       KADM_OPENSUBTITLES_API_KEY: ${KADM_OPENSUBTITLES_API_KEY:-}
 
-      # Fifteen minutes. The app's own default is 0, which disables the poller
-      # outright -- that default exists so a local `docker compose up`, a one-off
-      # `docker compose run` and the test suite never poll the real Radarr. This
-      # file is what turns it on.
+      # Fifteen minutes. The app defaults to 0 so tests never poll Radarr.
       KADM_MEDIA_POLL_SECONDS: 900
     volumes:
-      # Read-WRITE, unlike crashplan's read-only copy of the same share:
-      # approving a movie renames its directory and writes a poster into it, and
-      # rejecting one deletes it. This mount is what makes the media app
-      # possible, and it is the reason for the `user:` line above.
+      # Read-write: approving renames the directory and writes a poster into it.
       - /media/Poseidon:/media/Poseidon
-      # The SAME films, mounted a second time at the path Radarr uses.
-      #
-      # This is not redundancy, it is the fix for a real bug: radarr mounts
-      # `/media/Poseidon/Movies:/movies`, so `movieFile.path` comes back as
-      # `/movies/Some Film (1999)/Some Film.mkv`. kadm takes that path verbatim
-      # and opens it, so with only the mount above every single analysis failed
-      # with "No such file or directory" -- the file was right there, under a
-      # name this container could not see. Matching Radarr's namespace is the
-      # convention the whole *arr stack follows for exactly this reason.
+      # The same films again under Radarr's own path: `movieFile.path` comes
+      # back as `/movies/...` and kadm opens it verbatim. Not redundant.
       - /media/Poseidon/Movies:/movies
-      # Contact sheets and subtitle strips. Under /data rather than
-      # /media/Poseidon on purpose: they regenerate from the films in about two
-      # minutes each, and CrashPlan backs up only /media/Poseidon -- putting
-      # disposable derived images there would pay to store them offsite forever.
+      # Contact sheets and subtitle strips. Under /data because they regenerate
+      # and CrashPlan backs up only /media/Poseidon.
       - /data/kadm-media:/data/kadm-media
     networks: [internal]
 
