@@ -135,8 +135,9 @@ The media app adds `KADM_RADARR_API_KEY`, `KADM_TMDB_API_KEY`, and optionally
 
 The first two are not optional in practice: without
 the Radarr key the media app's endpoints answer 503 naming the missing setting,
-and without the TMDB key no artwork appears at all, because Apple's iTunes Search
-API stopped returning movie results and TMDB is now the only working source.
+and without the TMDB key most films show no artwork. Apple posters come from the
+Apple TV Artwork Finder API and need no key, but Apple does not stock everything
+and that API is someone else's server — TMDB is the source that is always there.
 
 `KADM_SECRET_KEY` encrypts the New York Times session cookie kadm stores for the
 crossword app. It must stay out of the database: `/data/postgres` is dumped nightly

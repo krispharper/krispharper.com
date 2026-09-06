@@ -83,7 +83,7 @@ services:
       KADM_TRANSMISSION_USERNAME: ${KADM_TRANSMISSION_USERNAME:-}
       KADM_TRANSMISSION_PASSWORD: ${KADM_TRANSMISSION_PASSWORD:-}
 
-      # Not optional: TMDB is the only working poster source.
+      # Not optional: Apple's art is a bonus on top, TMDB is the dependable one.
       KADM_TMDB_API_KEY: ${KADM_TMDB_API_KEY}
       KADM_OPENSUBTITLES_API_KEY: ${KADM_OPENSUBTITLES_API_KEY:-}
 
